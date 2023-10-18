@@ -21,6 +21,14 @@ var view;
 
 var outdir = path.normalize(env.opts.destination);
 
+function clearContents(){
+    if(fs.existsSync('docs/index.html')){
+        fs.writeFileSync('docs/index.html', '', 'utf8');
+    }
+}
+
+clearContents();
+
 function copyFile(source, target, cb) {
   var cbCalled = false;
 
@@ -249,15 +257,22 @@ function generate(type, title, docs, filename, resolveLinks) {
         docs: docs
     };
 
-    var outpath = path.join(outdir, filename),
+
+
+    var outpath = path.join(outdir, 'index.html')
+
         html = view.render('container.tmpl', docData);
+
 
     if (resolveLinks) {
         html = helper.resolveLinks(html); // turn {@link foo} into <a href="foodoc.html">foo</a>
     }
-
-    fs.writeFileSync(outpath, html, 'utf8');
+    if(docData.title!=='Home'){
+        fs.appendFileSync(outpath, html, 'utf8');
+    }
 }
+
+
 
 function generateSourceFiles(sourceFiles, encoding) {
     encoding = encoding || 'utf8';
@@ -327,9 +342,9 @@ function buildMemberNav(items, itemHeading, itemsSeen, linktoFn) {
 
     if (items && items.length) {
         var itemsNav = '';
-        var docdash = env && env.conf && env.conf.docdash || {};
-        var level = typeof docdash.navLevel === 'number' && docdash.navLevel >= 0 ?
-            docdash.navLevel :
+        var jsdocSoTemplate = env && env.conf && env.conf.jsdocSoTemplate || {};
+        var level = typeof jsdocSoTemplate.navLevel === 'number' && jsdocSoTemplate.navLevel >= 0 ?
+            jsdocSoTemplate.navLevel :
             Infinity;
 
         items.forEach(function(item) {
@@ -340,7 +355,7 @@ function buildMemberNav(items, itemHeading, itemsSeen, linktoFn) {
             var classes = '';
 
             // show private class?
-            if (docdash.private === false && item.access === 'private') return;
+            if (jsdocSoTemplate.private === false && item.access === 'private') return;
 
             // depth to show?
             if (item.ancestors && item.ancestors.length > level) {
@@ -357,18 +372,19 @@ function buildMemberNav(items, itemHeading, itemsSeen, linktoFn) {
                 } else {
                     displayName = item.name;
                 }
-                itemsNav += linktoFn(item.longname, displayName.replace(/\b(module|event):/g, ''));
+                itemsNav+= createHrefID(item.longname,item.name);
+                // itemsNav += linktoFn(item.longname, displayName.replace(/\b(module|event):/g, ''));
 
-                if (docdash.static && members.find(function (m) { return m.scope === 'static'; } )) {
+                if (jsdocSoTemplate.static && members.find(function (m) { return m.scope === 'static'; } )) {
                     itemsNav += "<ul class='members'>";
 
                     members.forEach(function (member) {
                         if (!member.scope === 'static') return;
                         itemsNav += "<li data-type='member'";
-                        if(docdash.collapse)
+                        if(jsdocSoTemplate.collapse)
                             itemsNav += " style='display: none;'";
                         itemsNav += ">";
-                        itemsNav += linkto(member.longname, member.name);
+                        // itemsNav += linkto(member.longname, member.name);
                         itemsNav += "</li>";
                     });
 
@@ -379,15 +395,17 @@ function buildMemberNav(items, itemHeading, itemsSeen, linktoFn) {
                     itemsNav += "<ul class='methods'>";
 
                     methods.forEach(function (method) {
-                        if (docdash.static === false && method.scope === 'static') return;
-                        if (docdash.private === false && method.access === 'private') return;
+                        if (jsdocSoTemplate.static === false && method.scope === 'static') return;
+                        if (jsdocSoTemplate.private === false && method.access === 'private') return;
 
                         var navItem = '';
-                        var navItemLink = linkto(method.longname, method.name);
+                        var navItemLink = createHrefID(method.longname,method.name);
+                        // var navItemLink = linkto(method.longname, method.name);
 
                         navItem += "<li data-type='method'";
-                        if(docdash.collapse)
+                        if(jsdocSoTemplate.collapse){
                             navItem += " style='display: none;'";
+                        }
                         navItem += ">";
                         navItem += navItemLink;
                         navItem += "</li>";
@@ -404,7 +422,7 @@ function buildMemberNav(items, itemHeading, itemsSeen, linktoFn) {
         });
 
         if (itemsNav !== '') {
-            if(docdash.collapse === "top") {
+            if(jsdocSoTemplate.collapse === "top") {
                 nav += '<h3 class="collapsed_header">' + itemHeading + '</h3><ul class="collapse_top">' + itemsNav + '</ul>';
             }
             else {
@@ -414,6 +432,10 @@ function buildMemberNav(items, itemHeading, itemsSeen, linktoFn) {
     }
 
     return nav;
+}
+
+function createHrefID(longname,name){
+    return `<a href="#${longname}">${name}</a>`
 }
 
 function linktoTutorial(longName, name) {
@@ -443,13 +465,13 @@ function buildNav(members) {
     var nav = '<h2><a href="index.html">Home</a></h2>';
     var seen = {};
     var seenTutorials = {};
-    var docdash = env && env.conf && env.conf.docdash || {};
-    if(docdash.menu){
-        for(var menu in docdash.menu){
+    var jsdocSoTemplate = env && env.conf && env.conf.jsdocSoTemplate || {};
+    if(jsdocSoTemplate.menu){
+        for(var menu in jsdocSoTemplate.menu){
             nav += '<h2><a ';
             //add attributes
-            for(var attr in docdash.menu[menu]){
-                nav += attr+'="' + docdash.menu[menu][attr] + '" ';
+            for(var attr in jsdocSoTemplate.menu[menu]){
+                nav += attr+'="' + jsdocSoTemplate.menu[menu][attr] + '" ';
             }
             nav += '>' + menu + '</a></h2>';
         }
@@ -461,8 +483,8 @@ function buildNav(members) {
             var globalNav = '';
     
             members.globals.forEach(function(g) {
-                if ( (docdash.typedefs || g.kind !== 'typedef') && !hasOwnProp.call(seen, g.longname) ) {
-                    globalNav += '<li>' + linkto(g.longname, g.name) + '</li>';
+                if ( (jsdocSoTemplate.typedefs || g.kind !== 'typedef') && !hasOwnProp.call(seen, g.longname) ) {
+                    globalNav += '<li>' + createHrefID(g.longname,g.name) + '</li>';
                 }
                 seen[g.longname] = true;
             });
@@ -472,7 +494,7 @@ function buildNav(members) {
                 ret += '<h3>' + linkto('global', 'Global') + '</h3>';
             }
             else {
-                if(docdash.collapse === "top") {
+                if(jsdocSoTemplate.collapse === "top") {
                     ret += '<h3 class="collapsed_header">Global</h3><ul class="collapse_top">' + globalNav + '</ul>';
                 }
                 else {
@@ -485,7 +507,7 @@ function buildNav(members) {
     var defaultOrder = [
         'Classes', 'Modules', 'Externals', 'Events', 'Namespaces', 'Mixins', 'Tutorials', 'Interfaces', 'Global'
     ];
-    var order = docdash.sectionOrder || defaultOrder;
+    var order = jsdocSoTemplate.sectionOrder || defaultOrder;
     var sections = {
         Classes: buildMemberNav(members.classes, 'Classes', seen, linkto),
         Modules: buildMemberNav(members.modules, 'Modules', {}, linkto),
@@ -508,7 +530,7 @@ function buildNav(members) {
     @param {Tutorial} tutorials
  */
 exports.publish = function(taffyData, opts, tutorials) {
-    var docdash = env && env.conf && env.conf.docdash || {};
+    var jsdocSoTemplate = env && env.conf && env.conf.jsdocSoTemplate || {};
     data = taffyData;
 
     var conf = env.conf.templates || {};
@@ -536,14 +558,14 @@ exports.publish = function(taffyData, opts, tutorials) {
 
     data = helper.prune(data);
 
-    docdash.sort !== false && data.sort('longname, version, since');
+    jsdocSoTemplate.sort !== false && data.sort('longname, version, since');
     helper.addEventListeners(data);
 
     var sourceFiles = {};
     var sourceFilePaths = [];
     data().each(function(doclet) {
-         if(docdash.removeQuotes){
-            if(docdash.removeQuotes === "all"){
+         if(jsdocSoTemplate.removeQuotes){
+            if(jsdocSoTemplate.removeQuotes === "all"){
                 if(doclet.name){
                     doclet.name = doclet.name.replace(/"/g, '');
                     doclet.name = doclet.name.replace(/'/g, '');
@@ -553,7 +575,7 @@ exports.publish = function(taffyData, opts, tutorials) {
                     doclet.longname = doclet.longname.replace(/'/g, '');
                 }
             }
-            else if(docdash.removeQuotes === "trim"){
+            else if(jsdocSoTemplate.removeQuotes === "trim"){
                 if(doclet.name){
                     doclet.name = doclet.name.replace(/^"(.*)"$/, '$1');
                     doclet.name = doclet.name.replace(/^'(.*)'$/, '$1');
@@ -609,16 +631,16 @@ exports.publish = function(taffyData, opts, tutorials) {
         if (packageInfo.name) {
             var packageName = packageInfo.name.split('/');
 
-            if (packageName.length > 1 && docdash.scopeInOutputPath !== false) {
+            if (packageName.length > 1 && jsdocSoTemplate.scopeInOutputPath !== false) {
                 subdirs.push(packageName[0]);
             }
 
-            if (docdash.nameInOutputPath !== false) {
+            if (jsdocSoTemplate.nameInOutputPath !== false) {
                 subdirs.push((packageName.length > 1 ? packageName[1] : packageName[0]));
             }
         }
 
-        if (packageInfo.version && docdash.versionInOutputPath !== false) {
+        if (packageInfo.version && jsdocSoTemplate.versionInOutputPath !== false) {
             subdirs.push(packageInfo.version);
         }
 
@@ -629,15 +651,6 @@ exports.publish = function(taffyData, opts, tutorials) {
     
     fs.mkPath(outdir);
 
-    // copy the template's static files to outdir
-    var fromDir = path.join(templatePath, 'static');
-    var staticFiles = fs.ls(fromDir, 3);
-
-    staticFiles.forEach(function(fileName) {
-        var toDir = fs.toDir( fileName.replace(fromDir, outdir) );
-        fs.mkPath(toDir);
-        copyFile(fileName, path.join(toDir, path.basename(fileName)), function(err){if(err) console.err(err);});
-    });
 
     // copy user-specified static files to outdir
     var staticFilePaths;
@@ -669,7 +682,7 @@ exports.publish = function(taffyData, opts, tutorials) {
     }
     data().each(function(doclet) {
         var url = helper.createLink(doclet);
-        if (docdash.noURLEncode) {
+        if (jsdocSoTemplate.noURLEncode) {
             url = decodeURI(url);
         }
         helper.registerLink(doclet.longname, url);
@@ -686,15 +699,9 @@ exports.publish = function(taffyData, opts, tutorials) {
     });
 
     data().each(function(doclet) {
+
         var url = helper.longnameToUrl[doclet.longname];
-
-        if (url.indexOf('#') > -1) {
-            doclet.id = helper.longnameToUrl[doclet.longname].split(/#/).pop();
-        }
-        else {
-            doclet.id = doclet.name;
-        }
-
+        doclet.id = doclet.longname;
         if ( needsSignature(doclet) ) {
             addSignatureParams(doclet);
             addSignatureReturns(doclet);
@@ -751,14 +758,32 @@ exports.publish = function(taffyData, opts, tutorials) {
     var files = find({kind: 'file'});
     var packages = find({kind: 'package'});
 
-    generate('', 'Home',
-        packages.concat(
-            [{kind: 'mainpage', readme: opts.readme, longname: (opts.mainpagetitle) ? opts.mainpagetitle : 'Main Page'}]
-        ).concat(files),
+    // generate('', 'Home',
+    //     packages.concat(
+    //         [{kind: 'mainpage', readme: opts.readme, longname: (opts.mainpagetitle) ? opts.mainpagetitle : 'Main Page'}]
+    //     ).concat(files),
+    // indexUrl);
+
+    generate('', 'Styles',
+    packages.concat(
+        [{kind: 'styles', readme: opts.readme, longname: (opts.mainpagetitle) ? opts.mainpagetitle : 'Styles'}]
+    ).concat(files),
+    indexUrl);
+
+    generate('', 'Nav',
+    packages.concat(
+        [{kind: 'nav', readme: opts.readme, longname: (opts.mainpagetitle) ? opts.mainpagetitle : 'Nav'}]
+    ).concat(files),
+    indexUrl);
+
+    generate('', 'Script',
+    packages.concat(
+        [{kind: 'script', readme: opts.readme, longname: (opts.mainpagetitle) ? opts.mainpagetitle : 'script'}]
+    ).concat(files),
     indexUrl);
 
     // common nav generation, no need for templating here, we already have full html
-    if (docdash.commonNav) {
+    if (jsdocSoTemplate.commonNav) {
         fs.writeFileSync(path.join(outdir, 'nav.inc.html'), view.nav, 'utf8');
     }
 
@@ -812,7 +837,7 @@ exports.publish = function(taffyData, opts, tutorials) {
         };
 
         var tutorialPath = path.join(outdir, filename);
-        var html = view.render('tutorial.tmpl', tutorialData);
+        // var html = view.render('tutorial.tmpl', tutorialData);
 
         // yes, you can use {@link} in tutorials too!
         html = helper.resolveLinks(html); // turn {@link foo} into <a href="foodoc.html">foo</a>
@@ -828,4 +853,4 @@ exports.publish = function(taffyData, opts, tutorials) {
     }
 
     saveChildren(tutorials);
-};
+}
